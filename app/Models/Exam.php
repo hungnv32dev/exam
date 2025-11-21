@@ -161,6 +161,16 @@ class Exam extends Model
         return $this->status === 'draft' || ($this->isUpcoming() && $this->examStudents()->count() === 0);
     }
 
+    public function canAddStudents()
+    {
+        // Có thể thêm sinh viên khi:
+        // - Đợt thi đang hoạt động (active)
+        // - Trong khoảng thời gian từ start_time đến end_time
+        // - Hoặc đợt thi chưa bắt đầu nhưng đã active
+        return $this->isActive() && 
+               ($this->isUpcoming() || $this->isOngoing());
+    }
+
     public function getTotalStudentsAttribute()
     {
         return $this->examStudents()->count();

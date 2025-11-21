@@ -59,4 +59,31 @@ class User extends Authenticatable
     {
         return $this->role === 'student';
     }
+
+    // Helper method để kiểm tra sinh viên đã có đợt thi chưa
+    public function hasExam(): bool
+    {
+        if (!$this->isStudent()) {
+            return false;
+        }
+        
+        return \App\Models\ExamStudent::where('student_id', $this->id)->exists();
+    }
+
+    // Relationship với ExamStudent
+    public function examStudents()
+    {
+        return $this->hasMany(\App\Models\ExamStudent::class, 'student_id');
+    }
+
+    // Lấy đợt thi của sinh viên (nếu có)
+    public function getExam()
+    {
+        if (!$this->isStudent()) {
+            return null;
+        }
+        
+        $examStudent = $this->examStudents()->first();
+        return $examStudent ? $examStudent->exam : null;
+    }
 }

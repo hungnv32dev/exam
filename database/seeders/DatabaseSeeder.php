@@ -57,10 +57,11 @@ class DatabaseSeeder extends Seeder
         //     'role' => 'student',
         // ]);
 
-        // Chạy Question seeder
-        // $this->call([
-        //     QuestionSeeder::class,
-        //     ExamSeeder::class,
-        // ]);
+        // Chạy các seeder
+        $this->call([
+            StudentSeeder::class,
+            // QuestionSeeder::class,
+            // ExamSeeder::class,
+        ]);
     }
 }

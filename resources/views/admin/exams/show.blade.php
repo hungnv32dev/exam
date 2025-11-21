@@ -265,6 +265,30 @@
                     <div class="fs-6 fw-semibold text-muted">Sinh viên đã đăng ký tham gia đợt thi</div>
                 </div>
                 <!--end::Card title-->
+                <!--begin::Card toolbar-->
+                @if($exam->canAddStudents())
+                <div class="card-toolbar">
+                    @if($availableStudents->count() > 0)
+                    <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#add_student_modal">
+                        <i class="ki-duotone ki-plus fs-4 me-2">
+                            <span class="path1"></span>
+                            <span class="path2"></span>
+                        </i>
+                        Thêm sinh viên
+                    </button>
+                    @else
+                    <button type="button" class="btn btn-secondary" disabled title="Không còn sinh viên nào có thể thêm">
+                        <i class="ki-duotone ki-information fs-4 me-2">
+                            <span class="path1"></span>
+                            <span class="path2"></span>
+                            <span class="path3"></span>
+                        </i>
+                        Không có sinh viên khả dụng
+                    </button>
+                    @endif
+                </div>
+                @endif
+                <!--end::Card toolbar-->
             </div>
             <!--end::Card header-->
             <!--begin::Card body-->
@@ -388,4 +412,355 @@
     <!--end::Col-->
 </div>
 <!--end::Row-->
+
+<!--begin::Add Student Modal-->
+@if($exam->canAddStudents() && $availableStudents->count() > 0)
+<div class="modal fade" id="add_student_modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered mw-650px">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="fw-bold">Thêm sinh viên vào đợt thi</h2>
+                <div class="btn btn-icon btn-sm btn-active-icon-primary" data-bs-dismiss="modal">
+                    <i class="ki-duotone ki-cross fs-1">
+                        <span class="path1"></span>
+                        <span class="path2"></span>
+                    </i>
+                </div>
+            </div>
+
+            <div class="modal-body scroll-y mx-5 mx-xl-15 my-7">
+                <form id="add_student_form" action="{{ route('admin.exams.add-students', $exam) }}" method="POST">
+                    @csrf
+                    
+                    <div class="d-flex flex-column scroll-y me-n7 pe-7">
+                        <div class="fv-row mb-7">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="required fw-semibold fs-6">Chọn sinh viên</label>
+                                <div class="d-flex gap-2 select-all-buttons">
+                                    <button type="button" class="btn btn-sm btn-light-primary" id="select_all_students">
+                                        <i class="ki-duotone ki-check-square fs-4 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                            <span class="path3"></span>
+                                        </i>
+                                        Chọn tất cả
+                                    </button>
+                                    <button type="button" class="btn btn-sm btn-light-danger" id="deselect_all_students">
+                                        <i class="ki-duotone ki-cross-square fs-4 me-1">
+                                            <span class="path1"></span>
+                                            <span class="path2"></span>
+                                        </i>
+                                        Bỏ chọn
+                                    </button>
+                                </div>
+                            </div>
+                            <select class="form-select form-select-solid" name="student_ids[]" multiple data-control="select2" data-close-on-select="false" data-placeholder="Tìm kiếm và chọn sinh viên..." data-allow-clear="true">
+                                @foreach($availableStudents as $student)
+                                <option value="{{ $student->id }}">{{ $student->name }} ({{ $student->email }})</option>
+                                @endforeach
+                            </select>
+                            <div class="text-muted fs-7 mt-2">
+                                Chỉ hiển thị sinh viên chưa tham gia bất kỳ đợt thi nào. 
+                                @if($availableStudents->count() == 0)
+                                    <span class="text-warning">Không còn sinh viên nào có thể thêm.</span>
+                                @else
+                                    <strong>Có {{ $availableStudents->count() }} sinh viên khả dụng.</strong> Sử dụng các nút bên trên để chọn nhanh.
+                                @endif
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info d-flex align-items-center p-5">
+                            <i class="ki-duotone ki-information-5 fs-2hx text-info me-4">
+                                <span class="path1"></span>
+                                <span class="path2"></span>
+                                <span class="path3"></span>
+                            </i>
+                            <div class="d-flex flex-column">
+                                <h5 class="mb-1">Lưu ý quan trọng</h5>
+                                <span>
+                                    <strong>Chính sách hệ thống:</strong> Mỗi sinh viên chỉ được tham gia 1 đợt thi duy nhất.<br>
+                                    @if($exam->isOngoing())
+                                    Đợt thi đang diễn ra. Sinh viên được thêm sẽ có thể vào làm bài ngay lập tức với thời gian làm bài đầy đủ.
+                                    @else
+                                    Đợt thi sẽ bắt đầu lúc <strong>{{ $exam->start_time->format('d/m/Y H:i') }}</strong>. Sinh viên được thêm sẽ nhận được thông báo.
+                                    @endif
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Hủy</button>
+                <button type="submit" form="add_student_form" class="btn btn-primary" id="submit_student_btn">
+                    <span class="indicator-label">Thêm sinh viên</span>
+                    <span class="indicator-progress">Đang xử lý...
+                    <span class="spinner-border spinner-border-sm align-middle ms-2"></span></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+@endif
+<!--end::Add Student Modal-->
+
+@push('scripts')
+@if($exam->canAddStudents() && $availableStudents->count() > 0)
+<style>
+.select-all-buttons .btn {
+    transition: all 0.2s ease-in-out;
+    font-size: 12px;
+}
+.select-all-buttons .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+.select-all-buttons .btn:disabled {
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM loaded, initializing add student modal');
+    
+    // Khởi tạo Select2 nếu có jQuery
+    let select2Instance = null;
+    if (typeof $ !== 'undefined') {
+        const selectElement = $('[name="student_ids[]"]');
+        if (selectElement.length) {
+            select2Instance = selectElement.select2({
+                placeholder: 'Tìm kiếm và chọn sinh viên...',
+                allowClear: true,
+                closeOnSelect: false,
+                width: '100%'
+            });
+            console.log('Select2 initialized');
+        }
+    }
+    
+    // Xử lý nút chọn tất cả
+    const selectAllBtn = document.getElementById('select_all_students');
+    const deselectAllBtn = document.getElementById('deselect_all_students');
+    const selectElement = document.querySelector('[name="student_ids[]"]');
+    
+    if (selectAllBtn && selectElement) {
+        selectAllBtn.addEventListener('click', function() {
+            console.log('Select all clicked');
+            
+            // Nếu dùng Select2
+            if (select2Instance) {
+                const allValues = [];
+                selectElement.querySelectorAll('option').forEach(option => {
+                    if (option.value) {
+                        allValues.push(option.value);
+                    }
+                });
+                select2Instance.val(allValues).trigger('change');
+                console.log('Selected all via Select2:', allValues.length, 'items');
+            } else {
+                // Fallback cho native select
+                selectElement.querySelectorAll('option').forEach(option => {
+                    option.selected = true;
+                });
+                console.log('Selected all via native select');
+            }
+            
+            // Cập nhật text của nút
+            updateButtonStates();
+        });
+    }
+    
+    if (deselectAllBtn && selectElement) {
+        deselectAllBtn.addEventListener('click', function() {
+            console.log('Deselect all clicked');
+            
+            // Nếu dùng Select2
+            if (select2Instance) {
+                select2Instance.val([]).trigger('change');
+                console.log('Deselected all via Select2');
+            } else {
+                // Fallback cho native select
+                selectElement.querySelectorAll('option').forEach(option => {
+                    option.selected = false;
+                });
+                console.log('Deselected all via native select');
+            }
+            
+            // Cập nhật text của nút
+            updateButtonStates();
+        });
+    }
+    
+    // Cập nhật trạng thái nút dựa trên số lượng đã chọn
+    function updateButtonStates() {
+        if (!selectElement) return;
+        
+        const selectedCount = selectElement.selectedOptions ? selectElement.selectedOptions.length : 0;
+        const totalOptions = selectElement.options.length;
+        
+        if (selectAllBtn) {
+            if (selectedCount === 0) {
+                selectAllBtn.innerHTML = `
+                    <i class="ki-duotone ki-check-square fs-4 me-1">
+                        <span class="path1"></span>
+                        <span class="path2"></span>
+                        <span class="path3"></span>
+                    </i>
+                    Chọn tất cả (${totalOptions})
+                `;
+                selectAllBtn.disabled = false;
+            } else if (selectedCount === totalOptions) {
+                selectAllBtn.innerHTML = `
+                    <i class="ki-duotone ki-check fs-4 me-1">
+                        <span class="path1"></span>
+                        <span class="path2"></span>
+                    </i>
+                    Đã chọn hết
+                `;
+                selectAllBtn.disabled = true;
+            } else {
+                selectAllBtn.innerHTML = `
+                    <i class="ki-duotone ki-check-square fs-4 me-1">
+                        <span class="path1"></span>
+                        <span class="path2"></span>
+                        <span class="path3"></span>
+                    </i>
+                    Chọn tất cả (còn ${totalOptions - selectedCount})
+                `;
+                selectAllBtn.disabled = false;
+            }
+        }
+        
+        if (deselectAllBtn) {
+            deselectAllBtn.disabled = selectedCount === 0;
+            deselectAllBtn.innerHTML = `
+                <i class="ki-duotone ki-cross-square fs-4 me-1">
+                    <span class="path1"></span>
+                    <span class="path2"></span>
+                </i>
+                Bỏ chọn${selectedCount > 0 ? ' (' + selectedCount + ')' : ''}
+            `;
+        }
+    }
+    
+    // Lắng nghe thay đổi từ Select2 hoặc native select
+    if (select2Instance) {
+        select2Instance.on('change', function() {
+            updateButtonStates();
+        });
+    } else if (selectElement) {
+        selectElement.addEventListener('change', function() {
+            updateButtonStates();
+        });
+    }
+    
+    // Cập nhật trạng thái ban đầu
+    setTimeout(updateButtonStates, 100);
+    
+    const form = document.getElementById('add_student_form');
+    const submitBtn = document.getElementById('submit_student_btn');
+    
+    console.log('Form:', form);
+    console.log('Submit button:', submitBtn);
+    
+    if (!form) {
+        console.error('Form not found!');
+        return;
+    }
+    
+    if (!submitBtn) {
+        console.error('Submit button not found!');
+        return;
+    }
+    
+    // Thêm event listener cho submit button
+    submitBtn.addEventListener('click', function(e) {
+        console.log('Submit button clicked');
+        e.preventDefault();
+        submitForm();
+    });
+    
+    // Thêm event listener cho form submit
+    form.addEventListener('submit', function(e) {
+        console.log('Form submit event');
+        e.preventDefault();
+        submitForm();
+    });
+    
+    function submitForm() {
+        console.log('submitForm called');
+        
+        const formData = new FormData(form);
+        const selectedStudents = formData.getAll('student_ids[]');
+        
+        console.log('Form action:', form.action);
+        console.log('Selected students:', selectedStudents);
+        console.log('Form data entries:', [...formData.entries()]);
+        
+        if (selectedStudents.length === 0) {
+            alert('Vui lòng chọn ít nhất một sinh viên.');
+            return;
+        }
+        
+        // Confirm action với số lượng sinh viên
+        const confirmMessage = `Bạn có chắc chắn muốn thêm ${selectedStudents.length} sinh viên vào đợt thi này không?\n\nSau khi thêm, các sinh viên này sẽ có thể tham gia làm bài.`;
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+        
+        // Show loading state
+        submitBtn.setAttribute('data-kt-indicator', 'on');
+        submitBtn.disabled = true;
+        
+        // Submit form using standard form submission (fallback)
+        if (false) { // Set to true to test standard form submission
+            form.submit();
+            return;
+        }
+        
+        // Submit form via AJAX
+        fetch(form.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json'
+            }
+        })
+        .then(response => {
+            console.log('Response status:', response.status);
+            console.log('Response headers:', [...response.headers.entries()]);
+            
+            if (response.ok) {
+                return response.json().catch(() => {
+                    // If not JSON, treat as success
+                    return { success: true };
+                });
+            } else {
+                return response.text().then(text => {
+                    console.log('Error response:', text);
+                    throw new Error('Server error (' + response.status + '): ' + text);
+                });
+            }
+        })
+        .then(data => {
+            console.log('Success response:', data);
+            window.location.reload();
+        })
+        .catch(error => {
+            console.error('Fetch error:', error);
+            alert('Có lỗi xảy ra: ' + error.message);
+            
+            // Reset loading state
+            submitBtn.removeAttribute('data-kt-indicator');
+            submitBtn.disabled = false;
+        });
+    }
+});
+</script>
+@endif
+@endpush
 @endsection

@@ -133,7 +133,16 @@ class ExamController extends Controller
             'examStudents.student'
         ]);
 
-        return view('admin.exams.show', compact('exam'));
+        // Lấy danh sách sinh viên có thể thêm (chưa tham gia bất kỳ đợt thi nào)
+        $availableStudents = collect();
+        if ($exam->canAddStudents()) {
+            $availableStudents = User::where('role', 'student')
+                ->whereDoesntHave('examStudents')  // Sử dụng Eloquent relationship
+                ->orderBy('name')
+                ->get();
+        }
+
+        return view('admin.exams.show', compact('exam', 'availableStudents'));
     }
 
     public function edit(Exam $exam)
@@ -381,6 +390,68 @@ class ExamController extends Controller
             DB::rollBack();
             return back()->withInput()
                 ->with('error', 'Có lỗi xảy ra khi nhân bản đợt thi: ' . $e->getMessage());
+        }
+    }
+
+    public function addStudents(Exam $exam, Request $request)
+    {
+        // Kiểm tra quyền admin
+        if (!Auth::user()->isAdmin()) {
+            abort(403, 'Không có quyền truy cập.');
+        }
+
+        // Kiểm tra có thể thêm sinh viên không
+        if (!$exam->canAddStudents()) {
+            return back()->with('error', 'Không thể thêm sinh viên vào đợt thi này lúc này.');
+        }
+
+        $request->validate([
+            'student_ids' => 'required|array|min:1',
+            'student_ids.*' => 'required|integer|exists:users,id'
+        ]);
+
+        try {
+            DB::beginTransaction();
+
+            $addedCount = 0;
+            $alreadyInSystemCount = 0;
+
+            foreach ($request->student_ids as $studentId) {
+                // Kiểm tra sinh viên có tồn tại và có role student không
+                $student = User::where('id', $studentId)->where('role', 'student')->first();
+                if (!$student) {
+                    continue;
+                }
+
+                // Kiểm tra sinh viên đã có đợt thi chưa (sử dụng helper method)
+                if ($student->hasExam()) {
+                    $alreadyInSystemCount++;
+                    continue;
+                }
+
+                // Thêm sinh viên vào đợt thi
+                ExamStudent::create([
+                    'exam_id' => $exam->id,
+                    'student_id' => $studentId,
+                    'status' => 'registered',
+                    'registered_at' => now(),
+                ]);
+
+                $addedCount++;
+            }
+
+            DB::commit();
+
+            $message = "Đã thêm {$addedCount} sinh viên vào đợt thi.";
+            if ($alreadyInSystemCount > 0) {
+                $message .= " ({$alreadyInSystemCount} sinh viên đã có đợt thi khác trong hệ thống)";
+            }
+
+            return back()->with('success', $message);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->with('error', 'Có lỗi xảy ra khi thêm sinh viên: ' . $e->getMessage());
         }
     }
 }

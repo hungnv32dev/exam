@@ -311,7 +311,7 @@
                                         </div>
                                         <!--end:Menu item-->
                                         <!--begin:Menu item-->
-                                        <div class="menu-item">
+                                        {{-- <div class="menu-item">
                                             <a class="menu-link {{ request()->routeIs('student.profile') ? 'active' : '' }}" href="{{ route('student.profile') }}">
                                                 <span class="menu-icon">
                                                     <i class="ki-duotone ki-profile-circle fs-2">
@@ -322,7 +322,7 @@
                                                 </span>
                                                 <span class="menu-title">Thông tin cá nhân</span>
                                             </a>
-                                        </div>
+                                        </div> --}}
                                         <!--end:Menu item-->
                                     @endif
                                 </div>
