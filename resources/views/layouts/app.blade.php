@@ -11,7 +11,7 @@
     <meta property="og:type" content="article" />
     <meta property="og:title" content="Metropolia Dashboard" />
 
-    <link rel="shortcut icon" href="{{ asset('assets/media/logos/favicon.ico') }}" />
+    <link rel="shortcut icon" href="{{ asset('assets/media/logos/metropolia.ico') }}" />
 
     <!--begin::Fonts(mandatory for all pages)-->
     <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Inter:300,400,500,600,700" />
@@ -180,8 +180,8 @@
                     <div class="app-sidebar-logo px-6" id="kt_app_sidebar_logo">
                         <!--begin::Logo image-->
                         <a href="{{ route('dashboard') }}">
-                            <img alt="Logo" src="{{ asset('assets/media/logos/default-dark.svg') }}" class="h-25px app-sidebar-logo-default" />
-                            <img alt="Logo" src="{{ asset('assets/media/logos/default-small.svg') }}" class="h-20px app-sidebar-logo-minimize" />
+                            <img alt="Logo" src="{{ asset('assets/media/logos/metropolia-logo.svg') }}" class="h-25px app-sidebar-logo-default" />
+                            <img alt="Logo" src="{{ asset('assets/media/logos/metropolia-logo.svg') }}" class="h-20px app-sidebar-logo-minimize" />
                         </a>
                         <!--end::Logo image-->
                         <!--begin::Sidebar toggle-->
