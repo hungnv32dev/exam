@@ -215,6 +215,98 @@ class StudentDashboardController extends Controller
             ->with('success', 'Bài thi đã được nộp thành công!');
     }
 
+    public function autoSave(Exam $exam, Request $request)
+    {
+        try {
+            // Kiểm tra quyền student
+            if (!Auth::user()->isStudent()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không có quyền truy cập.'
+                ], 403);
+            }
+
+            $user = Auth::user();
+
+            // Kiểm tra sinh viên có được tham gia đợt thi này không
+            $examStudent = ExamStudent::where('exam_id', $exam->id)
+                ->where('student_id', $user->id)
+                ->first();
+
+            if (!$examStudent) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bạn không được phép tham gia đợt thi này.'
+                ]);
+            }
+
+            // Kiểm tra đã nộp bài chưa
+            if ($examStudent->status === 'submitted') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bạn đã nộp bài trước đó.'
+                ]);
+            }
+
+            // Kiểm tra thời gian thi
+            $now = Carbon::now();
+            $examEndTime = Carbon::parse($exam->start_time)->addMinutes($exam->duration);
+            if ($now > $examEndTime) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Đã hết thời gian làm bài.'
+                ]);
+            }
+
+            // Lưu câu trả lời
+            $savedAnswers = 0;
+            foreach ($request->all() as $key => $value) {
+                if (strpos($key, 'answers[') === 0 && !empty(trim($value))) {
+                    // Extract question ID from answers[123] format
+                    preg_match('/answers\[(\d+)\]/', $key, $matches);
+                    if (isset($matches[1])) {
+                        $questionId = $matches[1];
+                        
+                        ExamAnswer::updateOrCreate(
+                            [
+                                'exam_id' => $exam->id,
+                                'student_id' => $user->id,
+                                'question_id' => $questionId,
+                            ],
+                            [
+                                'answer' => trim($value),
+                                'updated_at' => $now,
+                            ]
+                        );
+                        $savedAnswers++;
+                    }
+                }
+            }
+
+            // Cập nhật trạng thái exam_student nếu chưa bắt đầu
+            if ($examStudent->status === 'registered') {
+                $examStudent->update([
+                    'started_at' => $now,
+                    'status' => 'in_progress'
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã lưu bài làm thành công.',
+                'saved_answers' => $savedAnswers,
+                'saved_at' => $now->format('H:i:s')
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Auto-save error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi lưu bài làm: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function examResult(Exam $exam)
     {
         // Kiểm tra quyền student

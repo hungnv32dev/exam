@@ -269,6 +269,78 @@ document.addEventListener('DOMContentLoaded', function() {
     const countdownElement = document.getElementById('countdown');
     const modalCountdownElement = document.getElementById('modal-countdown');
 
+    // Auto-save to server function
+    function autoSaveToServer() {
+        const formData = new FormData();
+        formData.append('_token', document.querySelector('[name="_token"]').value);
+        
+        answerTextareas.forEach(textarea => {
+            if (textarea.value.trim()) {
+                formData.append(textarea.name, textarea.value);
+            }
+        });
+
+        return fetch('{{ route("student.exam.autosave", $exam) }}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('Auto-saved to server at:', new Date().toLocaleTimeString());
+                showAutoSaveIndicator();
+                return true;
+            } else {
+                console.error('Auto-save failed:', data.message);
+                return false;
+            }
+        })
+        .catch(error => {
+            console.error('Auto-save error:', error);
+            return false;
+        });
+    }
+
+    function showAutoSaveIndicator() {
+        // Remove existing indicator
+        const existingIndicator = document.querySelector('.auto-save-indicator');
+        if (existingIndicator) {
+            existingIndicator.remove();
+        }
+
+        const indicator = document.createElement('div');
+        indicator.className = 'auto-save-indicator alert alert-success position-fixed';
+        indicator.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 250px; opacity: 0; transition: opacity 0.3s;';
+        indicator.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="ki-duotone ki-check-circle fs-4 text-success me-2">
+                    <span class="path1"></span>
+                    <span class="path2"></span>
+                </i>
+                <span>Đã tự động lưu bài làm</span>
+            </div>
+        `;
+        document.body.appendChild(indicator);
+        
+        // Fade in
+        setTimeout(() => {
+            indicator.style.opacity = '1';
+        }, 10);
+        
+        // Fade out and remove
+        setTimeout(() => {
+            indicator.style.opacity = '0';
+            setTimeout(() => {
+                if (indicator.parentNode) {
+                    indicator.remove();
+                }
+            }, 300);
+        }, 3000);
+    }
+
     // Update countdown every second
     const countdownInterval = setInterval(function() {
         const now = new Date().getTime();
@@ -288,14 +360,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 countdownElement.classList.add('text-danger', 'fw-bold');
                 countdownElement.style.animation = 'blink 1s infinite';
             }
+
+            // Auto-save when 30 seconds left
+            if (timeLeft < 30 * 1000 && timeLeft > 25 * 1000) {
+                console.log('Final auto-save before time up...');
+                autoSaveToServer();
+            }
         } else {
             countdownElement.textContent = '00:00:00';
             modalCountdownElement.textContent = '00:00:00';
             clearInterval(countdownInterval);
+            clearInterval(autoSaveInterval);
 
-            // Auto submit when time is up
-            alert('Hết thời gian! Bài thi sẽ được nộp tự động.');
-            document.getElementById('exam-form').submit();
+            // Final save before auto-submit
+            console.log('Time up! Final save before submit...');
+            autoSaveToServer().finally(() => {
+                alert('Hết thời gian! Bài thi đã được lưu và sẽ nộp tự động.');
+                document.getElementById('exam-form').submit();
+            });
         }
     }, 1000);
 
@@ -319,9 +401,21 @@ document.addEventListener('DOMContentLoaded', function() {
         modalAnsweredElement.textContent = answeredCount;
     }
 
+    // Debounced auto-save when user types
+    let saveTimeout;
+    function debouncedAutoSave() {
+        clearTimeout(saveTimeout);
+        saveTimeout = setTimeout(() => {
+            autoSaveToServer();
+        }, 5000); // Save 5 seconds after user stops typing
+    }
+
     // Listen for input changes
     answerTextareas.forEach(textarea => {
-        textarea.addEventListener('input', updateAnswerCount);
+        textarea.addEventListener('input', function() {
+            updateAnswerCount();
+            debouncedAutoSave();
+        });
     });
 
     // Submit buttons
@@ -335,7 +429,10 @@ document.addEventListener('DOMContentLoaded', function() {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             updateAnswerCount();
-            submitModal.show();
+            // Save before showing modal
+            autoSaveToServer().then(() => {
+                submitModal.show();
+            });
         });
     });
 
@@ -344,24 +441,36 @@ document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('exam-form');
         finalSubmitBtn.setAttribute('data-kt-indicator', 'on');
         finalSubmitBtn.disabled = true;
-        form.submit();
+        
+        // Final save before submit
+        autoSaveToServer().finally(() => {
+            form.submit();
+        });
     });
 
     // Prevent accidental page leave
     window.addEventListener('beforeunload', function(e) {
+        // Quick save attempt
+        navigator.sendBeacon('{{ route("student.exam.autosave", $exam) }}', new FormData(document.getElementById('exam-form')));
+        
         e.preventDefault();
         e.returnValue = '';
         return 'Bạn có chắc chắn muốn rời khỏi trang? Dữ liệu chưa lưu sẽ bị mất.';
     });
 
-    // Auto-save every 30 seconds (to localStorage)
+    // Auto-save to server every 30 seconds
+    const autoSaveInterval = setInterval(function() {
+        autoSaveToServer();
+    }, 30000);
+
+    // Auto-save to localStorage every 10 seconds (backup)
     setInterval(function() {
         const formData = {};
         answerTextareas.forEach(textarea => {
             formData[textarea.name] = textarea.value;
         });
         localStorage.setItem('exam_{{ $exam->id }}_answers', JSON.stringify(formData));
-    }, 30000);
+    }, 10000);
 
     // Restore answers from localStorage
     const savedAnswers = localStorage.getItem('exam_{{ $exam->id }}_answers');
@@ -378,6 +487,9 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Could not restore saved answers');
         }
     }
+
+    // Initial update
+    updateAnswerCount();
 });
 
 // CSS for blinking animation

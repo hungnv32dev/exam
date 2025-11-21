@@ -86,6 +86,7 @@ Route::middleware(['auth', 'role:student'])->prefix('student')->group(function (
     Route::get('/exams', [StudentDashboardController::class, 'exams'])->name('student.exams');
     Route::get('/exams/{exam}/start', [StudentDashboardController::class, 'startExam'])->name('student.exam.start');
     Route::post('/exams/{exam}/submit', [StudentDashboardController::class, 'submitExam'])->name('student.exam.submit');
+    Route::post('/exams/{exam}/autosave', [StudentDashboardController::class, 'autoSave'])->name('student.exam.autosave');
     Route::get('/exams/{exam}/result', [StudentDashboardController::class, 'examResult'])->name('student.exam.result');
 });
 
