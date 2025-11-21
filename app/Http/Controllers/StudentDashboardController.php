@@ -137,7 +137,7 @@ class StudentDashboardController extends Controller
         }
 
         // Tính thời gian kết thúc dựa trên thời gian bắt đầu + duration
-        $endTime = $examStudent->started_at->addMinutes($exam->duration_minutes);
+        $endTime = $examStudent->started_at->clone()->addMinutes($exam->duration_minutes);
 
         // Không được vượt quá thời gian kết thúc của đợt thi
         if ($endTime > $exam->end_time) {
@@ -183,15 +183,16 @@ class StudentDashboardController extends Controller
                 ->with('info', 'Bạn đã nộp bài trước đó.');
         }
 
-        // Validate answers
+        // Validate answers - cho phép câu trả lời rỗng
         $request->validate([
-            'answers' => 'required|array',
-            'answers.*' => 'required|string',
+            'answers' => 'sometimes|array',
+            'answers.*' => 'nullable|string',
         ]);
 
         DB::transaction(function () use ($request, $exam, $examStudent) {
-            // Lưu câu trả lời vào database
-            foreach ($request->answers as $questionId => $answer) {
+            // Lưu câu trả lời vào database (cả câu rỗng)
+            $answers = $request->input('answers', []);
+            foreach ($answers as $questionId => $answer) {
                 ExamAnswer::updateOrCreate(
                     [
                         'exam_id' => $exam->id,
@@ -199,7 +200,7 @@ class StudentDashboardController extends Controller
                         'question_id' => $questionId,
                     ],
                     [
-                        'answer' => $answer,
+                        'answer' => trim($answer ?? ''),
                     ]
                 );
             }
@@ -248,40 +249,135 @@ class StudentDashboardController extends Controller
                 ]);
             }
 
-            // Kiểm tra thời gian thi
+            // Kiểm tra thời gian thi - sử dụng thời gian bắt đầu của sinh viên
             $now = Carbon::now();
-            $examEndTime = Carbon::parse($exam->start_time)->addMinutes($exam->duration);
-            if ($now > $examEndTime) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Đã hết thời gian làm bài.'
-                ]);
+            
+            // Nếu sinh viên chưa bắt đầu thi, cho phép auto-save
+            if (!$examStudent->started_at) {
+                // Nhưng phải trong khoảng thời gian thi chung
+                if ($now < $exam->start_time || $now > $exam->end_time) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Ngoài thời gian thi.'
+                    ]);
+                }
+            } else {
+                // Sinh viên đã bắt đầu - kiểm tra thời gian cá nhân
+                $studentEndTime = $examStudent->started_at->clone()->addMinutes((int) $exam->duration_minutes);
+                
+                // Không được vượt quá thời gian kết thúc chung
+                if ($studentEndTime > $exam->end_time) {
+                    $studentEndTime = $exam->end_time;
+                }
+                
+                // Cho phép auto-save ngay cả khi hết thời gian (để lưu lần cuối)
+                // if ($now > $studentEndTime) {
+                //     return response()->json([
+                //         'success' => false,
+                //         'message' => 'Đã hết thời gian làm bài.'
+                //     ]);
+                // }
             }
 
-            // Lưu câu trả lời
+            // Debug: Log tất cả request data
+            \Log::info('AutoSave Request Debug', [
+                'all_request_data' => $request->all(),
+                'request_keys' => array_keys($request->all()),
+                'request_count' => count($request->all()),
+                'has_answers_key' => $request->has('answers'),
+                'answers_data' => $request->input('answers', []),
+                'raw_input' => $request->getContent()
+            ]);
+
+            // Lưu câu trả lời - XỬ LÝ CẢ 2 FORMAT
             $savedAnswers = 0;
+            $answersData = [];
+            
+            // Format 1: answers[123] keys (nếu có)
             foreach ($request->all() as $key => $value) {
-                if (strpos($key, 'answers[') === 0 && !empty(trim($value))) {
+                \Log::info('Processing key', ['key' => $key, 'value' => $value]);
+                
+                if (strpos($key, 'answers[') === 0) {
                     // Extract question ID from answers[123] format
                     preg_match('/answers\[(\d+)\]/', $key, $matches);
                     if (isset($matches[1])) {
                         $questionId = $matches[1];
+                        $answerText = trim($value ?? '');
                         
-                        ExamAnswer::updateOrCreate(
+                        \Log::info('Saving answer (format 1)', [
+                            'question_id' => $questionId,
+                            'answer' => $answerText,
+                            'exam_id' => $exam->id,
+                            'student_id' => $user->id
+                        ]);
+                        
+                        $examAnswer = ExamAnswer::updateOrCreate(
                             [
                                 'exam_id' => $exam->id,
                                 'student_id' => $user->id,
                                 'question_id' => $questionId,
                             ],
                             [
-                                'answer' => trim($value),
+                                'answer' => $answerText,
                                 'updated_at' => $now,
                             ]
                         );
+                        
+                        $answersData[] = [
+                            'question_id' => $questionId,
+                            'answer_length' => strlen($answerText),
+                            'was_updated' => $examAnswer->wasRecentlyCreated ? 'created' : 'updated',
+                            'format' => 'answers[x]'
+                        ];
+                        
                         $savedAnswers++;
                     }
                 }
             }
+            
+            // Format 2: answers nested array (Laravel parsed format)
+            if ($request->has('answers') && is_array($request->input('answers'))) {
+                foreach ($request->input('answers') as $questionId => $answerText) {
+                    $answerText = trim($answerText ?? '');
+                    
+                    \Log::info('Saving answer (format 2)', [
+                        'question_id' => $questionId,
+                        'answer' => $answerText,
+                        'exam_id' => $exam->id,
+                        'student_id' => $user->id
+                    ]);
+                    
+                    $examAnswer = ExamAnswer::updateOrCreate(
+                        [
+                            'exam_id' => $exam->id,
+                            'student_id' => $user->id,
+                            'question_id' => $questionId,
+                        ],
+                        [
+                            'answer' => $answerText,
+                            'updated_at' => $now,
+                        ]
+                    );
+                    
+                    $answersData[] = [
+                        'question_id' => $questionId,
+                        'answer_length' => strlen($answerText),
+                        'was_updated' => $examAnswer->wasRecentlyCreated ? 'created' : 'updated',
+                        'format' => 'answers.nested'
+                    ];
+                    
+                    $savedAnswers++;
+                }
+            }
+
+            // Debug logging
+            \Log::info('Auto-save for exam', [
+                'exam_id' => $exam->id,
+                'student_id' => $user->id,
+                'saved_answers_count' => $savedAnswers,
+                'answers_data' => $answersData,
+                'request_data_count' => count($request->all())
+            ]);
 
             // Cập nhật trạng thái exam_student nếu chưa bắt đầu
             if ($examStudent->status === 'registered') {
@@ -295,7 +391,15 @@ class StudentDashboardController extends Controller
                 'success' => true,
                 'message' => 'Đã lưu bài làm thành công.',
                 'saved_answers' => $savedAnswers,
-                'saved_at' => $now->format('H:i:s')
+                'saved_at' => $now->format('H:i:s'),
+                'answers_detail' => $answersData,
+                'debug_info' => [
+                    'exam_id' => $exam->id,
+                    'student_id' => $user->id,
+                    'exam_student_status' => $examStudent->status,
+                    'student_started_at' => $examStudent->started_at?->format('Y-m-d H:i:s'),
+                    'now' => $now->format('Y-m-d H:i:s')
+                ]
             ]);
 
         } catch (\Exception $e) {

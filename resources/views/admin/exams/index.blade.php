@@ -221,6 +221,15 @@
                                             Sửa
                                         </a>
                                         @endif
+                                        <a href="{{ route('admin.exams.clone', $exam) }}"
+                                           class="btn btn-sm btn-light-info me-2"
+                                           title="Nhân bản đợt thi">
+                                            <i class="ki-duotone ki-copy fs-4">
+                                                <span class="path1"></span>
+                                                <span class="path2"></span>
+                                            </i>
+                                            Nhân bản
+                                        </a>
                                         @if($exam->canBeDeleted())
                                         <form action="{{ route('admin.exams.destroy', $exam) }}" method="POST"
                                               style="display: inline;" onsubmit="return confirm('Bạn có chắc chắn muốn xóa đợt thi này?');">

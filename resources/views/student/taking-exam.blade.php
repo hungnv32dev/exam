@@ -181,7 +181,7 @@
 
                     <!--begin::Submit Section-->
                     <div class="text-center pt-10">
-                        <button type="button" class="btn btn-light me-3" onclick="window.history.back()">
+                        <button type="button" class="btn btn-light me-3" id="cancel-btn" onclick="confirmCancel()">
                             <i class="ki-duotone ki-arrow-left fs-4 me-2">
                                 <span class="path1"></span>
                                 <span class="path2"></span>
@@ -246,7 +246,7 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-light" data-bs-dismiss="modal">Tiếp tục làm bài</button>
+                <button type="button" class="btn btn-light" data-bs-dismiss="modal" id="cancel-submit-btn">Tiếp tục làm bài</button>
                 <button type="button" class="btn btn-primary" id="confirm-submit">
                     <i class="ki-duotone ki-check fs-4 me-2">
                         <span class="path1"></span>
@@ -259,6 +259,41 @@
     </div>
 </div>
 <!--end::Submit Confirmation Modal-->
+
+<!--begin::Time Up Modal-->
+<div class="modal fade" id="time-up-modal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger">
+                <h5 class="modal-title text-white">
+                    <i class="ki-duotone ki-time fs-2 text-white me-2">
+                        <span class="path1"></span>
+                        <span class="path2"></span>
+                    </i>
+                    Hết thời gian làm bài
+                </h5>
+            </div>
+            <div class="modal-body text-center">
+                <i class="ki-duotone ki-time fs-5x text-danger mb-5">
+                    <span class="path1"></span>
+                    <span class="path2"></span>
+                </i>
+                <h4 class="fw-bold text-danger mb-3">Thời gian làm bài đã kết thúc!</h4>
+                <p class="text-gray-600 mb-3">
+                    Bài thi của bạn đã được tự động lưu và sẽ được nộp ngay bây giờ.
+                    Bạn không thể chỉnh sửa thêm.
+                </p>
+                <div class="d-flex align-items-center justify-content-center">
+                    <div class="spinner-border text-primary me-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <span class="fw-bold">Đang nộp bài tự động...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!--end::Time Up Modal-->
 @endsection
 
 @push('scripts')
@@ -268,29 +303,69 @@ document.addEventListener('DOMContentLoaded', function() {
     const endTime = new Date('{{ $endTime->toISOString() }}').getTime();
     const countdownElement = document.getElementById('countdown');
     const modalCountdownElement = document.getElementById('modal-countdown');
+    
+    // Track answered questions - KHỞI TẠO SỚM
+    const answerTextareas = document.querySelectorAll('.answer-textarea');
+    console.log('Initialized answerTextareas:', answerTextareas.length);
+    answerTextareas.forEach((textarea, index) => {
+        console.log(`Textarea ${index}:`, {
+            name: textarea.name,
+            className: textarea.className,
+            id: textarea.id
+        });
+    });
+    
+    const answeredCountElement = document.getElementById('answered-count');
+    const unansweredCountElement = document.getElementById('unanswered-count');
+    const modalAnsweredElement = document.getElementById('modal-answered');
 
     // Auto-save to server function
     function autoSaveToServer() {
         const formData = new FormData();
-        formData.append('_token', document.querySelector('[name="_token"]').value);
+        const csrfToken = document.querySelector('[name="_token"]').value;
+        formData.append('_token', csrfToken);
         
-        answerTextareas.forEach(textarea => {
-            if (textarea.value.trim()) {
-                formData.append(textarea.name, textarea.value);
-            }
+        console.log('CSRF Token:', csrfToken);
+        console.log('Found textareas:', answerTextareas.length);
+        
+        // Gửi tất cả câu trả lời, kể cả rỗng để track tiến độ
+        answerTextareas.forEach((textarea, index) => {
+            console.log(`Textarea ${index}:`, {
+                name: textarea.name,
+                value: textarea.value,
+                length: textarea.value.length
+            });
+            formData.append(textarea.name, textarea.value || '');
         });
 
-        return fetch('{{ route("student.exam.autosave", $exam) }}', {
+        // Debug: log what we're sending
+        console.log('FormData entries:');
+        for (let [key, value] of formData.entries()) {
+            console.log(`${key}: "${value}"`);
+        }
+        
+        // Alternative: convert to plain object để dễ debug
+        const dataObject = Object.fromEntries(formData);
+        console.log('Data as object:', dataObject);
+        console.log('Object keys:', Object.keys(dataObject));
+        console.log('Total keys:', Object.keys(dataObject).length);
+        
+        return fetch('{{ route("student.exam.autosave", $exam) }}?t=' + Date.now(), {
             method: 'POST',
             body: formData,
             headers: {
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'Cache-Control': 'no-cache'
             }
         })
-        .then(response => response.json())
+        .then(response => {
+            console.log('Auto-save response status:', response.status);
+            return response.json();
+        })
         .then(data => {
+            console.log('Auto-save response data:', data);
             if (data.success) {
-                console.log('Auto-saved to server at:', new Date().toLocaleTimeString());
+                console.log('Auto-saved to server at:', new Date().toLocaleTimeString(), 'Saved answers:', data.saved_answers);
                 showAutoSaveIndicator();
                 return true;
             } else {
@@ -341,6 +416,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000);
     }
 
+    // Function to disable exam interface when time is up
+    function disableExamInterface() {
+        // Disable all textareas
+        answerTextareas.forEach(textarea => {
+            textarea.disabled = true;
+            textarea.style.backgroundColor = '#f5f5f5';
+            textarea.style.cursor = 'not-allowed';
+        });
+
+        // Disable all buttons
+        const allButtons = document.querySelectorAll('button, .btn');
+        allButtons.forEach(button => {
+            button.disabled = true;
+            button.classList.add('disabled');
+        });
+
+        // Remove beforeunload handler to prevent popup when submitting
+        window.removeEventListener('beforeunload', beforeUnloadHandler);
+        
+        // Hide submit modal if open
+        const submitModal = bootstrap.Modal.getInstance(document.getElementById('submit-modal'));
+        if (submitModal) {
+            submitModal.hide();
+        }
+    }
+
+    // Function to show time up modal
+    function showTimeUpModal() {
+        const timeUpModal = new bootstrap.Modal(document.getElementById('time-up-modal'), {
+            backdrop: 'static',
+            keyboard: false
+        });
+        timeUpModal.show();
+    }
+
     // Update countdown every second
     const countdownInterval = setInterval(function() {
         const now = new Date().getTime();
@@ -371,21 +481,23 @@ document.addEventListener('DOMContentLoaded', function() {
             modalCountdownElement.textContent = '00:00:00';
             clearInterval(countdownInterval);
             clearInterval(autoSaveInterval);
+            
+            // Set time up flag
+            isTimeUp = true;
+
+            // Show time up modal and disable interface immediately
+            showTimeUpModal();
+            disableExamInterface();
 
             // Final save before auto-submit
             console.log('Time up! Final save before submit...');
             autoSaveToServer().finally(() => {
-                alert('Hết thời gian! Bài thi đã được lưu và sẽ nộp tự động.');
-                document.getElementById('exam-form').submit();
+                setTimeout(() => {
+                    document.getElementById('exam-form').submit();
+                }, 3000); // Give user 3 seconds to read the message
             });
         }
     }, 1000);
-
-    // Track answered questions
-    const answerTextareas = document.querySelectorAll('.answer-textarea');
-    const answeredCountElement = document.getElementById('answered-count');
-    const unansweredCountElement = document.getElementById('unanswered-count');
-    const modalAnsweredElement = document.getElementById('modal-answered');
 
     function updateAnswerCount() {
         let answeredCount = 0;
@@ -406,6 +518,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function debouncedAutoSave() {
         clearTimeout(saveTimeout);
         saveTimeout = setTimeout(() => {
+            console.log('Debounced auto-save triggered by user input');
             autoSaveToServer();
         }, 5000); // Save 5 seconds after user stops typing
     }
@@ -423,11 +536,19 @@ document.addEventListener('DOMContentLoaded', function() {
     const finalSubmitBtn = document.getElementById('final-submit');
     const confirmSubmitBtn = document.getElementById('confirm-submit');
     const submitModal = new bootstrap.Modal(document.getElementById('submit-modal'));
+    
+    let isTimeUp = false; // Flag to track if time is up
 
     // Show modal on submit button click
     [submitExamBtn, finalSubmitBtn].forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
+            
+            // Prevent submit if time is up
+            if (isTimeUp) {
+                return false;
+            }
+            
             updateAnswerCount();
             // Save before showing modal
             autoSaveToServer().then(() => {
@@ -449,17 +570,20 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Prevent accidental page leave
-    window.addEventListener('beforeunload', function(e) {
+    const beforeUnloadHandler = function(e) {
         // Quick save attempt
         navigator.sendBeacon('{{ route("student.exam.autosave", $exam) }}', new FormData(document.getElementById('exam-form')));
         
         e.preventDefault();
         e.returnValue = '';
         return 'Bạn có chắc chắn muốn rời khỏi trang? Dữ liệu chưa lưu sẽ bị mất.';
-    });
+    };
+    
+    window.addEventListener('beforeunload', beforeUnloadHandler);
 
     // Auto-save to server every 30 seconds
     const autoSaveInterval = setInterval(function() {
+        console.log('Periodic auto-save triggered (every 30s)');
         autoSaveToServer();
     }, 30000);
 
@@ -490,6 +614,21 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial update
     updateAnswerCount();
+
+    // Function to confirm cancel/exit
+    window.confirmCancel = function() {
+        // Prevent cancel if time is up
+        if (isTimeUp) {
+            alert('Thời gian đã hết. Không thể thoát ra ngoài.');
+            return false;
+        }
+        
+        if (confirm('Bạn có chắc chắn muốn thoát? Dữ liệu đã nhập sẽ được tự động lưu.')) {
+            autoSaveToServer().finally(() => {
+                window.history.back();
+            });
+        }
+    };
 });
 
 // CSS for blinking animation

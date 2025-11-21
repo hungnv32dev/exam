@@ -282,4 +282,105 @@ class ExamController extends Controller
 
         return response()->json($students);
     }
+
+    /**
+     * Show the form for cloning an exam
+     */
+    public function clone(Exam $exam)
+    {
+        if (!Auth::user()->isAdmin()) {
+            abort(403, 'Không có quyền truy cập.');
+        }
+
+        // Load exam with relationships
+        $exam->load(['examQuestions.question', 'examStudents.student']);
+
+        // Get all active questions for the question selection
+        $questions = Question::where('status', 'active')
+            ->orderBy('title')
+            ->get();
+
+        // Get all students for the student selection
+        $students = User::where('role', 'student')
+            ->orderBy('name')
+            ->get();
+
+        return view('admin.exams.clone', compact('exam', 'questions', 'students'));
+    }
+
+    /**
+     * Store the cloned exam
+     */
+    public function storeClone(Request $request, Exam $originalExam)
+    {
+        if (!Auth::user()->isAdmin()) {
+            abort(403, 'Không có quyền truy cập.');
+        }
+
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'required|string|max:100|unique:exams,code',
+            'description' => 'nullable|string',
+            'start_time' => 'required|date|after:now',
+            'duration_minutes' => 'required|integer|min:5|max:300',
+            'status' => 'required|in:draft,active,completed',
+            'questions' => 'required|array|min:1',
+            'questions.*' => 'exists:questions,id',
+            'students' => 'required|array|min:1',
+            'students.*' => 'exists:users,id'
+        ], [
+            'name.required' => 'Tên đợt thi là bắt buộc.',
+            'code.required' => 'Mã đợt thi là bắt buộc.',
+            'code.unique' => 'Mã đợt thi đã tồn tại.',
+            'start_time.required' => 'Thời gian bắt đầu là bắt buộc.',
+            'start_time.after' => 'Thời gian bắt đầu phải sau thời điểm hiện tại.',
+            'duration_minutes.required' => 'Thời gian làm bài là bắt buộc.',
+            'duration_minutes.min' => 'Thời gian làm bài tối thiểu 5 phút.',
+            'duration_minutes.max' => 'Thời gian làm bài tối đa 300 phút.',
+            'questions.required' => 'Phải chọn ít nhất 1 câu hỏi.',
+            'students.required' => 'Phải chọn ít nhất 1 sinh viên.',
+        ]);
+
+        DB::beginTransaction();
+        try {
+            // Create new exam
+            $newExam = Exam::create([
+                'name' => $request->name,
+                'code' => $request->code,
+                'description' => $request->description,
+                'start_time' => $request->start_time,
+                'duration_minutes' => (int) $request->duration_minutes,
+                'end_time' => Carbon::parse($request->start_time)->addMinutes((int) $request->duration_minutes),
+                'status' => $request->status,
+                'created_by' => Auth::id(),
+            ]);
+
+            // Clone exam questions with order
+            foreach ($request->questions as $index => $questionId) {
+                $newExam->examQuestions()->create([
+                    'question_id' => $questionId,
+                    'order_number' => $index + 1,
+                ]);
+            }
+
+            // Clone exam students
+            foreach ($request->students as $studentId) {
+                $newExam->examStudents()->create([
+                    'student_id' => $studentId,
+                    'status' => 'registered',
+                    'registered_at' => now(),
+                ]);
+            }
+
+            DB::commit();
+
+            return redirect()->route('admin.exams.show', $newExam)
+                ->with('success', 'Đợt thi đã được nhân bản thành công!');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return back()->withInput()
+                ->with('error', 'Có lỗi xảy ra khi nhân bản đợt thi: ' . $e->getMessage());
+        }
+    }
 }

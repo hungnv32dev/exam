@@ -66,6 +66,8 @@ Route::middleware(['auth', 'role:admin'])->prefix('admin')->group(function () {
     Route::get('/exams/{exam}/edit', [ExamController::class, 'edit'])->name('admin.exams.edit');
     Route::put('/exams/{exam}', [ExamController::class, 'update'])->name('admin.exams.update');
     Route::delete('/exams/{exam}', [ExamController::class, 'destroy'])->name('admin.exams.destroy');
+    Route::get('/exams/{exam}/clone', [ExamController::class, 'clone'])->name('admin.exams.clone');
+    Route::post('/exams/{exam}/clone', [ExamController::class, 'storeClone'])->name('admin.exams.clone.store');
 
     // Import Users routes
     Route::get('/import/users', [\App\Http\Controllers\Admin\ImportController::class, 'showImportForm'])->name('admin.import.users');
